@@ -63,7 +63,7 @@ local node_list = {}  -- 存储所有节点的名称
 local node_map = {}   -- 用于映射名称到节点对象
 local canvas_size = { width = 20, height = 20 }
 local icon_path = "d:/bone.png"
-local custom_icon = Image{ fromFile = icon_path}
+-- local custom_icon = Image{ fromFile = icon_path}
 
 
 -- 获取骨骼层级字符串（用于 label 显示）
@@ -192,10 +192,10 @@ function draw_skeleton(ev, node, x, y, depth)
     })
 
 
-    -- 画文本
+    -- 画文本 ev.context:drawImage(custom_icon,x + indent + textSize.width + spacing,y-4)
     ev.context:fillText(node.name,x + indent + spacing, y)
 	local textSize= ev.context:measureText(node.name)
-	ev.context:drawImage(custom_icon,x + indent + textSize.width + spacing,y-4)
+	
 
     -- 递归画子节点
     local new_y = y + icon_size + spacing
