@@ -5,7 +5,9 @@ local radius = 5
 local row_space = 20
 local colum_space = 20
 local max_depth = 4
-local spr
+local bone_sprite = nil
+local bone_layer = nil
+local bone_cel = nil
 -- 存储骨骼数据的树形结构
 local skeleton_tree = {name="root",x=100,y=100,NodeButtonLeft, NodeButtonRight,children={},index = 1,parent=nil,depth=1}
 local bone_label_ids = {} 
@@ -20,6 +22,21 @@ local node_radius = 10  -- 每个节点的半径
 local selected_node = nil  -- 记录当前点击的骨骼节点
 -- 🔹 存储节点绘制位置（用于点击检测）
 local node_positions = {}
+
+
+local function create_bone_sprite()
+    if bone_sprite == nil then
+		-- **创建新的 Sprite**
+		bone_sprite = Sprite(400, 400,ColorMode.RGBA)  -- 创建 400x400 大小的新 Sprite
+		bone_sprite.transparentColor = Color(0,0,0,0)
+		bone_sprite.filename = "bone_sprite"
+		bone_layer = bone_sprite.layers[1]
+		bone_layer.name = "BoneTree"
+		bone_cel = bone_sprite:newCel(bone_layer,1)
+	end
+end
+
+
 local customButton = {
     bounds = Rectangle(5, 5, 20, 20),
     state = {
@@ -31,6 +48,7 @@ local customButton = {
     text = "Custom Button",
     onclick = function() print("Clicked <Custom Button>") end
 }
+
 local NodeButtonLeft = {
     bounds = Rectangle(5, 50, 40, 20),
     state = {
@@ -74,17 +92,17 @@ local NodeButtonRight = {
 }
 
 local function freshSprite() 
-	
 	--local image = cel.image
-	local layer = spr.layers[1]
-	local image = layer:cel(1).image
+	--local layer = spr.layers["BoneTree"]
+	app.layer = bone_layer
+	local image = bone_cel.image
 	image:clear()
 	-- **调用递归函数绘制骨骼树**
-	drawBoneTree(spr,skeleton_tree)  -- 以 root 节点为根绘制
+	drawBoneTree(skeleton_tree)  -- 以 root 节点为根绘制
 
 	-- **显示新创建的 Sprite**
-	app.selectprite = spr
-	app.refresh()
+	--app.selectprite = spr
+	--app.refresh()
 end
 -- 获取骨骼层级字符串（用于 label 显示）
 local function getSkeletonHierarchy()
@@ -184,6 +202,7 @@ local function drawCircle(lay,sel,px,py, size,color)
         brush = brush,
         layer = layer,
         cel = cel,
+		frame = bone_sprite.frames[1],
         ink = "copy_color",
     }
 end
@@ -191,17 +210,17 @@ end
 
 
 -- 递归绘制骨骼树到 Sprite
-function drawBoneTree(spr, node)
+function drawBoneTree(node)
   local color = Color { r = 255, g = 255, b = 255, a = 255 }
-  local layer = spr.layers[1]
-  local sel = layer.cels[1]
+  --local bonelayer = spr.layers["BoneTree"]
+  --local sel = bonelayer.cels[1]
   --local pos_y = node.y + colum_space * index 
   --local pos_x = node.x + row_space * node.depth
   --drawCircle(layer,cel,node.x + 10 * node.depth ,node.y + 10* node.index,5,color)
-  drawCircle(layer,cel,node.x ,node.y,radius,color)
+  drawCircle(bone_layer,bone_cel,node.x ,node.y,radius,color)
   if node.parent ~= nil then
   -- 绘制连线（如果有父节点）
-	drawLine(layer,cel,node.x,node.y, node.parent.x, node.parent.y, Color(255, 0, 0))  -- 红色连线
+	drawLine(bone_layer,bone_cel,node.x,node.y, node.parent.x, node.parent.y, Color(255, 0, 0))  
   end
   
   --else
@@ -219,7 +238,7 @@ function drawBoneTree(spr, node)
 
   -- 递归绘制子节点
   for i, child in ipairs(node.children) do
-     drawBoneTree(spr, child)
+     drawBoneTree(child)
   end
 end
 
@@ -452,10 +471,16 @@ end
 
 local function delayed_restart()
         target_point = nil
-        if app.activeSprite.selection.isEmpty == false then
-            app.command.Cancel()
-            app.activeSprite.selection:deselect()
-        end
+        --if app.activeSprite.selection.isEmpty == false then
+         --   app.command.Cancel()
+         --   app.activeSprite.selection:deselect()
+        --end
+		
+		if bone_sprite.selection.isEmpty == false then
+		   app.command.Cancel()
+		   bone_sprite.selection:deselect()
+		end
+		
         local timer
         timer = Timer {
             interval = 0.01,
@@ -497,13 +522,18 @@ local function edit_start()
     end
 end 
 
+local function bind_start(skinLayer_name)
+	local skin_layer = bone_sprite.layers[skinLayer_name]
+	if skin_layer == nil then
+	   skin_layer = bone_sprite:newLayer()
+	   skin_layer.name = skinLayer_name
+	end
+end 
 
 
 
--- **创建新的 Sprite**
-spr = Sprite(400, 400,ColorMode.RGBA)  -- 创建 400x400 大小的新 Sprite
-spr.transparentColor = Color(0,0,0,0)
-function createDiagog()
+
+function createDiaglog()
 	if dlg then
 		dlg:close()
 	end
@@ -541,12 +571,15 @@ function createDiagog()
 	dlg:button{id="add_bone", text=" + ", onclick=addBoneNode}
 	dlg:button{id="delete_done", text=" - ", onclick=rmBoneChildNode}
 	dlg:button{id="bind", text="create", onclick=function() edit_start() end}
-	dlg:button{id="bind", text="bind", onclick=function() dlg:close() end}
+	dlg:button{id="bind", text="bind", onclick=function() 
+										if selected_node ~= nil then
+										  bind_start(selected_node.name)
+										end
+									   end}
 	dlg:button{id="close", text="关闭", onclick=function() dlg:close() end}
 	dlg:show{wait = false}
 end
 
--- **创建一个新图层**
-local layer = spr.layers[1]
-layer.name = "BoneTree"
-createDiagog()
+
+create_bone_sprite()
+createDiaglog()
