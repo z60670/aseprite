@@ -2,14 +2,14 @@ local dlg
 local cmdDlg
 local max_child = 8  
 local radius = 5
-local row_space = 20
-local colum_space = 20
+local row_space = 10
+local colum_space = 10
 local max_depth = 4
 local bone_sprite = nil
 local bone_layer = nil
-local bone_cel = nil
+local sk_layer_name = "BoneTree"
 -- 存储骨骼数据的树形结构
-local skeleton_tree = {name="root",x=100,y=100,NodeButtonLeft, NodeButtonRight,children={},index = 1,parent=nil,depth=1}
+local skeleton_tree = {name="root",x=64,y=64,NodeButtonLeft, NodeButtonRight,children={},index = 1,parent=nil,depth=1,image=nil,offset = Point(0,0)}
 local bone_label_ids = {} 
 local node_list = {}  -- 存储所有节点的名称
 local node_map = {}   -- 用于映射名称到节点对象
@@ -20,23 +20,20 @@ local dragging_index = nil
 local target_point =  nil
 local node_radius = 10  -- 每个节点的半径
 local selected_node = nil  -- 记录当前点击的骨骼节点
+
+---select size at first
+
+local sizes = {
+  { label = "128x128", width = 128, height = 128 },
+  { label = "192x192", width = 192, height = 192 },
+  { label = "256x256", width = 256, height = 256 },
+  { label = "512x512", width = 512, height = 512 },
+  { label = "1024x1024", width = 1024, height = 1024 },
+}
+local selected_size = sizes[1]
+
 -- 🔹 存储节点绘制位置（用于点击检测）
 local node_positions = {}
-
-
-local function create_bone_sprite()
-    if bone_sprite == nil then
-		-- **创建新的 Sprite**
-		bone_sprite = Sprite(400, 400,ColorMode.RGBA)  -- 创建 400x400 大小的新 Sprite
-		bone_sprite.transparentColor = Color(0,0,0,0)
-		bone_sprite.filename = "bone_sprite"
-		bone_layer = bone_sprite.layers[1]
-		bone_layer.name = "BoneTree"
-		bone_cel = bone_sprite:newCel(bone_layer,1)
-	end
-end
-
-
 local customButton = {
     bounds = Rectangle(5, 5, 20, 20),
     state = {
@@ -48,7 +45,6 @@ local customButton = {
     text = "Custom Button",
     onclick = function() print("Clicked <Custom Button>") end
 }
-
 local NodeButtonLeft = {
     bounds = Rectangle(5, 50, 40, 20),
     state = {
@@ -91,23 +87,130 @@ local NodeButtonRight = {
     onclick = function() print("Clicked <Search Button Right>") end
 }
 
+local function create_skeleton_sprite()
+	if bone_sprite == nil then	
+	-- *create Sprite for skeleton**
+		bone_sprite = Sprite(selected_size.width, selected_size.height,ColorMode.RGBA)  -- 创建 400x400 大小的新 Sprite  selected_size
+		bone_sprite.transparentColor = Color(0,0,0,0)
+		bone_sprite.filename = "skeleton_sprite"
+	end
+	if bone_layer == nil then
+		  bone_layer =  bone_sprite.layers[1] 
+		 -- local cel = bone_sprite:newCel(bone_layer,1)
+		  bone_layer.name = sk_layer_name
+		 -- bone_layer.stackIndex = 100
+		--spr:newCel(bone_layer,1)
+	end
+end
+local function moveSkLayer2Top()
+	if bone_sprite == nil then
+	   app.alert("Not found skeleton sprite")
+	   return
+	end
+	if bone_layer then 
+		local newSkLayer = bone_sprite:newLayer()
+		--newSkLayer.name = sk_layer_name
+		for _,cel in ipairs(bone_layer.cels) do
+			local newImage = cel.image:clone()
+			bone_sprite:newCel(newSkLayer,cel.frameNumber,newImage,cel.position)
+			
+		end
+		bone_sprite:deleteLayer(bone_layer)
+		bone_layer = newSkLayer
+		bone_layer.name = sk_layer_name
+	end
+		
+end
+local function findBondLayer()
+	for _,layer in ipairs(bone_sprite.layers) do
+	   if layer.name == sk_layer_name then
+	      bone_layer = layer
+		  break
+	   end
+	end
+end
+
 local function freshSprite() 
 	--local image = cel.image
-	--local layer = spr.layers["BoneTree"]
-	app.layer = bone_layer
-	local image = bone_cel.image
+	--local layer = spr.layers[1]
+	--if not bone_layer:cel(1) then
+	   
+	local image = bone_layer:cel(1).image
 	image:clear()
 	-- **调用递归函数绘制骨骼树**
-	drawBoneTree(skeleton_tree)  -- 以 root 节点为根绘制
+	drawBoneTree(spr,skeleton_tree)  -- 以 root 节点为根绘制
 
 	-- **显示新创建的 Sprite**
-	--app.selectprite = spr
-	--app.refresh()
+	app.selectprite = spr
+	app.refresh()
 end
 -- 获取骨骼层级字符串（用于 label 显示）
 local function getSkeletonHierarchy()
     return table.concat(generateIndentedList(skeleton_tree, ""), "\n")
 end
+
+local function add_skin_layer(skinLayer_name)
+	local src_cel = nil
+	local src_spr = app.sprite
+	local src_layer = nil
+	for _,layer in ipairs(src_spr.layers) do
+		if layer.isImage and layer.name ~= sk_layer_name and layer.name ~= skinLayer_name then
+		   src_cel = layer:cel(1)
+		   if src_cel then
+		      src_layer = layer
+			  break
+			end
+		end
+	end
+	
+	if not src_cel then
+	   app.alert("not select a layer")
+	   return
+	end
+	local selection = app.sprite.selection
+	if  selection.isEmpty then 
+	   app.alert("not selection a region")
+	   return
+	end
+	local skin_layer = bone_sprite.layers[skinLayer_name]
+	if skin_layer == nil then
+	   skin_layer = bone_sprite:newLayer()
+	   skin_layer.name = skinLayer_name
+	   --skin_layer.stackIndex = 1
+	end
+	local skin_cel = skin_layer:cel(1)
+	if not skin_cel then
+		skin_cel= bone_sprite:newCel(skin_layer,1)
+	end
+
+	local bounds = selection.bounds
+	local w,h = bounds.width, bounds.height
+	
+	--print("w:"..w.."h:"..h.."x:"..bounds.x.."y:"..bounds.y)
+	local src_img = src_cel.image
+	local croppedImg = Image(w,h,src_spr.colorMode)
+	for y = bounds.y, bounds.y+bounds.height - 1 do 
+	    for x = bounds.x, bounds.x + bounds.width - 1 do
+		  if selection:contains(x,y) then
+				local color = src_img:getPixel(x,y)
+				croppedImg:putPixel(x-bounds.x,y-bounds.y,color)
+				--croppedImg:putPixel(x,y,color)
+			end
+		end
+	end
+	--croppedImg:drawImage(src_img,Point(-bounds.x,-bounds.y))
+	--skin_cel.image:drawImage(croppedImg,0,0)
+	skin_cel.image:drawImage(croppedImg,selected_node.x - radius,selected_node.y -radius)
+	selected_node.image = croppedImg
+	--selected_node.point = Poinet()
+	--moveSkLayer2Top()
+	app.refresh()
+end
+
+	
+
+
+
 
 
 
@@ -117,7 +220,7 @@ function add_skeleton_node(parent, name)
     local x = parent.x + row_space   -- * parent.depth
 	local y = parent.y + colum_space * parent.index
 	local depth = parent.depth + 1
-    local node = { name = name, x=x,y=y,NodeButtonLeft, NodeButtonRight,children = {},index=1 ,parent=parent, depth=depth}
+    local node = { name = name, x=x,y=y,NodeButtonLeft, NodeButtonRight,children = {},index=1 ,parent=parent, depth=depth,image=nil,offset = Point(0,0)}
     table.insert(parent.children, node)
 	parent.index = parent.index+1
 	
@@ -202,7 +305,6 @@ local function drawCircle(lay,sel,px,py, size,color)
         brush = brush,
         layer = layer,
         cel = cel,
-		frame = bone_sprite.frames[1],
         ink = "copy_color",
     }
 end
@@ -210,19 +312,31 @@ end
 
 
 -- 递归绘制骨骼树到 Sprite
-function drawBoneTree(node)
+function drawBoneTree(spr, node)
   local color = Color { r = 255, g = 255, b = 255, a = 255 }
-  --local bonelayer = spr.layers["BoneTree"]
-  --local sel = bonelayer.cels[1]
+  
+  if bone_layer == nil then
+     return
+	 
+  end
+  local sel = bone_layer.cels[1]
   --local pos_y = node.y + colum_space * index 
   --local pos_x = node.x + row_space * node.depth
   --drawCircle(layer,cel,node.x + 10 * node.depth ,node.y + 10* node.index,5,color)
-  drawCircle(bone_layer,bone_cel,node.x ,node.y,radius,color)
+  drawCircle(bone_layer,cel,node.x ,node.y,radius,color)
   if node.parent ~= nil then
   -- 绘制连线（如果有父节点）
-	drawLine(bone_layer,bone_cel,node.x,node.y, node.parent.x, node.parent.y, Color(255, 0, 0))  
+	drawLine(bone_layer,cel,node.x,node.y, node.parent.x, node.parent.y, Color(255, 0, 0))  -- 红色连线
   end
   
+  --draw skin
+  local skin = bone_sprite.layers[node.name] 
+  if skin and node.image ~= nil then
+	local skin_cel = skin:cel(1)
+	skin_cel.image:clear()
+	skin_cel.image:drawImage(node.image,node.x - radius,node.y - radius)
+  end
+     
   --else
     --drawCircle(layer,cel,node.x,node.y,1,color)
     --drawLine(spr,parent_x, parent_y, root.x, root.y, Color(255, 0, 0))  -- 红色连线
@@ -238,7 +352,7 @@ function drawBoneTree(node)
 
   -- 递归绘制子节点
   for i, child in ipairs(node.children) do
-     drawBoneTree(child)
+     drawBoneTree(spr, child)
   end
 end
 
@@ -412,22 +526,46 @@ local function get_bone(mx, my, size)
   end
   return nil
 end
+
+local function move_child(node,offset_x,offset_y)
+    for _,child in ipairs(node.children) do 
+	   child.x = math.max(0, math.min(app.activeSprite.width - 1, child.x + offset_x))
+	   child.y = math.max(0, math.min(app.activeSprite.height - 1, child.y + offset_y))
+	   move_child(child,offset_x,offset_y)
+	end
+end
 local function move_point(ev)
 	
-    if target_point ~= nil then
-		target_point.x = math.max(0, math.min(app.activeSprite.width - 1, ev.point.x))
-		target_point.y = math.max(0, math.min(app.activeSprite.height - 1, ev.point.y))
-		dlg:modify { id = "point",text= target_point.name}
-		freshSprite()
-	else
-            target_point = get_bone_at_pos(skeleton_tree,ev.point.x, ev.point.y, 3)
-            if target_point ~= nil then
-			   target_point.x = math.max(0, math.min(app.activeSprite.width - 1, ev.point.x))
-			   target_point.y = math.max(0, math.min(app.activeSprite.height - 1, ev.point.y))
-			   dlg:modify { id = "point",text= target_point.name}
-               freshSprite()
-            end
-	end
+    if target_point == nil then
+	   target_point = get_bone_at_pos(skeleton_tree,ev.point.x, ev.point.y, 3)
+    end
+	if target_point ~= nil then
+	   local ori_x = target_point.x
+	   local ori_y = target_point.y
+	   target_point.x = math.max(0, math.min(app.activeSprite.width - 1, ev.point.x))
+	   target_point.y = math.max(0, math.min(app.activeSprite.height - 1, ev.point.y))
+	   dlg:modify { id = "point",text= target_point.name}
+	   
+	   local offset_x = target_point.x - ori_x 
+	   local offset_y = target_point.y - ori_y 
+	   move_child(target_point,offset_x,offset_y)
+       freshSprite()
+    end	
+	
+	-- if target_point ~= nil then
+		-- target_point.x = math.max(0, math.min(app.activeSprite.width - 1, ev.point.x))
+		-- target_point.y = math.max(0, math.min(app.activeSprite.height - 1, ev.point.y))
+		-- dlg:modify { id = "point",text= target_point.name}
+		-- freshSprite()
+	-- else
+            -- target_point = get_bone_at_pos(skeleton_tree,ev.point.x, ev.point.y, 3)
+            -- if target_point ~= nil then
+			   -- target_point.x = math.max(0, math.min(app.activeSprite.width - 1, ev.point.x))
+			   -- target_point.y = math.max(0, math.min(app.activeSprite.height - 1, ev.point.y))
+			   -- dlg:modify { id = "point",text= target_point.name}
+               -- freshSprite()
+            -- end
+	-- end
 end
 
 
@@ -471,16 +609,10 @@ end
 
 local function delayed_restart()
         target_point = nil
-        --if app.activeSprite.selection.isEmpty == false then
-         --   app.command.Cancel()
-         --   app.activeSprite.selection:deselect()
-        --end
-		
-		if bone_sprite.selection.isEmpty == false then
-		   app.command.Cancel()
-		   bone_sprite.selection:deselect()
-		end
-		
+        if app.activeSprite.selection.isEmpty == false then
+            app.command.Cancel()
+            app.activeSprite.selection:deselect()
+        end
         local timer
         timer = Timer {
             interval = 0.01,
@@ -522,23 +654,17 @@ local function edit_start()
     end
 end 
 
-local function bind_start(skinLayer_name)
-	local skin_layer = bone_sprite.layers[skinLayer_name]
-	if skin_layer == nil then
-	   skin_layer = bone_sprite:newLayer()
-	   skin_layer.name = skinLayer_name
-	end
-end 
 
 
 
 
-function createDiaglog()
+function createDiagog()
 	if dlg then
 		dlg:close()
 	end
 	-- 初始化对话框
 	dlg = Dialog("构建骨骼")
+	dlg:label { id = "sprite_size", label = "Size: ", text = selected_size.label }
 	--collect_nodes(skeleton_tree) -- 收集所有节点信息
 	dlg:label { id = "point", label = "Selected: ", text = "None" }
 	dlg_canvas = dlg:canvas{
@@ -572,14 +698,50 @@ function createDiaglog()
 	dlg:button{id="delete_done", text=" - ", onclick=rmBoneChildNode}
 	dlg:button{id="bind", text="create", onclick=function() edit_start() end}
 	dlg:button{id="bind", text="bind", onclick=function() 
-										if selected_node ~= nil then
-										  bind_start(selected_node.name)
-										end
-									   end}
+	                             add_skin_layer(selected_node.name) 
+								 --moveSkLayer2Top()
+								 end }
 	dlg:button{id="close", text="关闭", onclick=function() dlg:close() end}
 	dlg:show{wait = false}
 end
 
 
-create_bone_sprite()
-createDiaglog()
+
+local select_size_dlg = Dialog { title = "选择 Sprite 分辨率" }
+
+-- 添加下拉选项
+local select_size_labels = {}
+for i, item in ipairs(sizes) do
+  table.insert(select_size_labels, item.label)
+end
+
+select_size_dlg:combobox{
+  id = "size_choice",
+  label = "分辨率",
+  options = select_size_labels,
+  option = select_size_labels[1]  -- 默认选择第一个
+}
+
+select_size_dlg:button { id = "ok", text = "确定" }
+select_size_dlg:button { id = "cancel", text = "取消" }
+
+-- 显示对话框并处理结果
+select_size_dlg:show()
+
+local select_size_data = select_size_dlg.data
+if not select_size_data.ok then
+  return -- 用户取消
+end
+
+-- 查找用户选择的大小
+for _, item in ipairs(sizes) do
+  if item.label == select_size_data.size_choice then
+    selected_size = item
+    break
+  end
+end
+
+
+create_skeleton_sprite()
+
+createDiagog()
