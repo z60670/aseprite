@@ -9,7 +9,7 @@ local bone_sprite = nil
 local bone_layer = nil
 local sk_layer_name = "BoneTree"
 -- 存储骨骼数据的树形结构
-local skeleton_tree = {name="root",x=64,y=64,NodeButtonLeft, NodeButtonRight,children={},index = 1,parent=nil,depth=1,image=nil,offset = Point(0,0)}
+local skeleton_tree = {name="root",x=64,y=64,NodeButtonLeft, NodeButtonRight,children={},index = 1,parent=nil,depth=1,image=nil,offset_x=0,offset_y=0}
 local bone_label_ids = {} 
 local node_list = {}  -- 存储所有节点的名称
 local node_map = {}   -- 用于映射名称到节点对象
@@ -19,7 +19,7 @@ local custom_icon = Image{ fromFile = icon_path}
 local dragging_index = nil
 local target_point =  nil
 local node_radius = 10  -- 每个节点的半径
-local selected_node = nil  -- 记录当前点击的骨骼节点
+local selected_node = skeleton_tree  -- 记录当前点击的骨骼节点
 
 ---select size at first
 
@@ -200,7 +200,7 @@ local function add_skin_layer(skinLayer_name)
 	end
 	--croppedImg:drawImage(src_img,Point(-bounds.x,-bounds.y))
 	--skin_cel.image:drawImage(croppedImg,0,0)
-	skin_cel.image:drawImage(croppedImg,selected_node.x - radius,selected_node.y -radius)
+	skin_cel.image:drawImage(croppedImg,selected_node.x ,selected_node.y)
 	selected_node.image = croppedImg
 	--selected_node.point = Poinet()
 	--moveSkLayer2Top()
@@ -220,7 +220,7 @@ function add_skeleton_node(parent, name)
     local x = parent.x + row_space   -- * parent.depth
 	local y = parent.y + colum_space * parent.index
 	local depth = parent.depth + 1
-    local node = { name = name, x=x,y=y,NodeButtonLeft, NodeButtonRight,children = {},index=1 ,parent=parent, depth=depth,image=nil,offset = Point(0,0)}
+    local node = { name = name, x=x,y=y,NodeButtonLeft, NodeButtonRight,children = {},index=1 ,parent=parent, depth=depth,image=nil,offset_x = 0,offset_y =0}
     table.insert(parent.children, node)
 	parent.index = parent.index+1
 	
@@ -274,7 +274,7 @@ local function addBoneChildNode(node,boneName)
 	dlg:repaint()
 end
 
-local function drawLine(layer,sel,p1x,p1y, p2x,p2y, color)
+local function drawLine(layer,cel,p1x,p1y, p2x,p2y, color)
     local line_color = Color { r = 255, g = 255, b = 255, a = 255 }
 
     local brush = Brush(1)
@@ -290,7 +290,7 @@ end
 
 
 
-local function drawCircle(lay,sel,px,py, size,color)
+local function drawCircle(lay,cel,px,py, size,color)
     local brush = Brush {
         type = BrushType.CIRCLE,
         size = size,
@@ -309,7 +309,20 @@ local function drawCircle(lay,sel,px,py, size,color)
     }
 end
 
-
+function drawSelectLayerImage()
+    local layerName = selected_node.name
+	local skin_layer = bone_sprite.layers[layerName]
+	if skin_layer == nil then
+	  return
+	end
+	local skin_cel = skin_layer:cel(1)
+	if not skin_cel then
+		return
+	end
+	skin_cel.image:clear()
+	skin_cel.image:drawImage(selected_node.image,selected_node.x + dlg.data.offset_x,selected_node.y+dlg.data.offset_y )
+	app.refresh()
+end 
 
 -- 递归绘制骨骼树到 Sprite
 function drawBoneTree(spr, node)
@@ -319,7 +332,7 @@ function drawBoneTree(spr, node)
      return
 	 
   end
-  local sel = bone_layer.cels[1]
+  local cel = bone_layer.cels[1]
   --local pos_y = node.y + colum_space * index 
   --local pos_x = node.x + row_space * node.depth
   --drawCircle(layer,cel,node.x + 10 * node.depth ,node.y + 10* node.index,5,color)
@@ -334,7 +347,8 @@ function drawBoneTree(spr, node)
   if skin and node.image ~= nil then
 	local skin_cel = skin:cel(1)
 	skin_cel.image:clear()
-	skin_cel.image:drawImage(node.image,node.x - radius,node.y - radius)
+	skin_cel.image:drawImage(node.image,node.x,node.y )
+
   end
      
   --else
@@ -658,22 +672,29 @@ end
 
 
 
-function createDiagog()
+function createDiaglog()
 	if dlg then
 		dlg:close()
 	end
+
 	-- 初始化对话框
-	dlg = Dialog("构建骨骼")
+	dlg = Dialog("Skeleton")
 	dlg:label { id = "sprite_size", label = "Size: ", text = selected_size.label }
 	--collect_nodes(skeleton_tree) -- 收集所有节点信息
 	dlg:label { id = "point", label = "Selected: ", text = "None" }
+	dlg:entry{id="bone_name", label="BoneName"}
+
+	dlg:button{id="add_bone", text=" + ", onclick=addBoneNode}
+	dlg:button{id="delete_done", text=" - ", onclick=rmBoneChildNode}
+	
 	dlg_canvas = dlg:canvas{
 		id = "skeleton_canvas",
-		width = 300,
+		width = 200,
 		height = 200,
 		onpaint = function(ev)
 			node_positions = {}  -- 清空旧的节点位置
-			draw_skeleton(ev, skeleton_tree, 10, 10, 0)
+			draw_skeleton(ev, skeleton_tree, 1, 1, 0)
+			--ev.context:drawThemeRect("horizontal_symmetry", 200, 100, 100, 100)
 		end,
 		
 		onmousedown = function(ev)
@@ -684,6 +705,9 @@ function createDiagog()
 						click_y >= entry.y and click_y <= (entry.y + entry.height) then
 						--showCommandDialog(entry.node)
 						selected_node = entry.node
+						dlg:modify { id = "offset_x", value = selected_node.offset_x }
+						dlg:modify { id = "offset_y", value = selected_node.offset_y }
+						
 						dlg:repaint()
 
 						return
@@ -692,22 +716,43 @@ function createDiagog()
 				selected_node = nil
 		end
 	}
-	dlg:entry{id="bone_name", label="骨骼名称"}
-
-	dlg:button{id="add_bone", text=" + ", onclick=addBoneNode}
-	dlg:button{id="delete_done", text=" - ", onclick=rmBoneChildNode}
-	dlg:button{id="bind", text="create", onclick=function() edit_start() end}
-	dlg:button{id="bind", text="bind", onclick=function() 
+	dlg:button{id="edit", text="Move", onclick=function() edit_start() end}
+	dlg:button{id="bind", text="Bind", onclick=function() 
 	                             add_skin_layer(selected_node.name) 
 								 --moveSkLayer2Top()
 								 end }
-	dlg:button{id="close", text="关闭", onclick=function() dlg:close() end}
+	dlg:newrow()
+
+	dlg:slider { id = "offset_x",
+            label = "offset_x",
+            min = -selected_size.width/2,
+            max = selected_size.width/2,
+            value = 0,
+			onchange=function()  selected_node.offset_x=dlg.data.offset_x drawSelectLayerImage() end 
+			}
+    dlg:slider { id = "offset_y",
+            label = "offset_y",
+            min = -selected_size.height/2,
+            max = selected_size.height/2,
+            value = 0 ,
+			onchange= function() selected_node.offset_y=dlg.data.offset_y drawSelectLayerImage() end 
+			}
+	dlg:slider { id = "rotator",
+            label = "rotator",
+            min = 0,
+            max = 360,
+            value = 0 }
+	dlg:newrow()
+	dlg:button{id="CreateKey", text="CreateKey", onclick=function() dlg:close() end}
+	dlg:button{id="Save", text="Save", onclick=function() dlg:close() end}
+	dlg:button{id="close", text="Close", onclick=function() dlg:close() end}
+
 	dlg:show{wait = false}
 end
 
 
 
-local select_size_dlg = Dialog { title = "选择 Sprite 分辨率" }
+local select_size_dlg = Dialog { title = "select resolution" }
 
 -- 添加下拉选项
 local select_size_labels = {}
@@ -717,13 +762,12 @@ end
 
 select_size_dlg:combobox{
   id = "size_choice",
-  label = "分辨率",
   options = select_size_labels,
   option = select_size_labels[1]  -- 默认选择第一个
 }
 
-select_size_dlg:button { id = "ok", text = "确定" }
-select_size_dlg:button { id = "cancel", text = "取消" }
+select_size_dlg:button { id = "ok", text = "OK" }
+select_size_dlg:button { id = "cancel", text = "Cancel" }
 
 -- 显示对话框并处理结果
 select_size_dlg:show()
@@ -744,4 +788,4 @@ end
 
 create_skeleton_sprite()
 
-createDiagog()
+createDiaglog()
