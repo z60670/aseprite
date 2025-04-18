@@ -20,7 +20,7 @@ local dragging_index = nil
 local target_point =  nil
 local node_radius = 10  -- 每个节点的半径
 local selected_node = skeleton_tree  -- 记录当前点击的骨骼节点
-
+local cloneImage = nil 
 ---select size at first
 
 local sizes = {
@@ -201,9 +201,9 @@ local function add_skin_layer(skinLayer_name)
 	--croppedImg:drawImage(src_img,Point(-bounds.x,-bounds.y))
 	--skin_cel.image:drawImage(croppedImg,0,0)
 	skin_cel.image:drawImage(croppedImg,selected_node.x ,selected_node.y)
-	selected_node.image = croppedImg
+	selected_node.image = croppedImg:clone()
 	--selected_node.point = Poinet()
-	--moveSkLayer2Top()
+	moveSkLayer2Top()
 	app.refresh()
 end
 
@@ -324,6 +324,24 @@ function drawSelectLayerImage()
 	app.refresh()
 end 
 
+function rotateSelectLayerImage(angle)
+	--updateCloneImage()
+    local layerName = selected_node.name
+	local skin_layer = bone_sprite.layers[layerName]
+	if skin_layer == nil then
+	  return
+	end
+	local skin_cel = skin_layer:cel(1)
+	if not skin_cel then
+		return
+	end
+	skin_cel.image:clear()
+	local tempImage = Rotar(selected_node.image,angle)
+	skin_cel.image:drawImage(tempImage,0,0 )
+	selected_node.image = tempImage:clone()
+	app.refresh()
+end 
+
 -- 递归绘制骨骼树到 Sprite
 function drawBoneTree(spr, node)
   local color = Color { r = 255, g = 255, b = 255, a = 255 }
@@ -347,7 +365,7 @@ function drawBoneTree(spr, node)
   if skin and node.image ~= nil then
 	local skin_cel = skin:cel(1)
 	skin_cel.image:clear()
-	skin_cel.image:drawImage(node.image,node.x,node.y )
+	skin_cel.image:drawImage(node.image,node.x + node.offset_x,node.y + node.offset_y)
 
   end
      
@@ -669,9 +687,118 @@ local function edit_start()
 end 
 
 
+function toAngle(value)
+	local angle = 36/180 * math.pi
+	return angle
+end
 
 
+function Rotar(image2Rot, angle)
+  local maskColor = image2Rot.spec.transparentColor
+  local maxSize = math.floor(image2Rot.width * 1.416)
+  if math.floor(image2Rot.height * 1.416) > maxSize then
+    maxSize = math.floor(image2Rot.height * 1.416)
+  end
+  if maxSize%2 == 1 then
+    maxSize = maxSize + 1
+  end
+  -- maxSize is a even number
+  local centeredImage = Image(maxSize, maxSize, image2Rot.colorMode)
+  -- center image2Rot in the new image 'centeredImage'
+  local image2RotPosition = Point((centeredImage.width - image2Rot.width) / 2, (centeredImage.height - image2Rot.height) / 2)
+  for y=image2RotPosition.y, image2RotPosition.y + image2Rot.height - 1, 1 do
+    for x=image2RotPosition.x, image2RotPosition.x + image2Rot.width - 1, 1 do
+      centeredImage:drawPixel(x, y, image2Rot:getPixel(x - image2RotPosition.x, y - image2RotPosition.y))
+    end
+  end
 
+  --local pivot = Point(centeredImage.width / 2 - 0.5 + (image2Rot.width % 2) * 0.5, centeredImage.height / 2 - 0.5 + (image2Rot.height % 2) * 0.5)
+  local pivot = Point(selected_node.x,selected_node.y)
+  local outputImg = Image(centeredImage.width, centeredImage.height, image2Rot.colorMode)
+
+  if angle == 0 then
+    for y = 0 , centeredImage.height-1, 1 do
+      for x = 0, centeredImage.width-1, 1 do
+        local px = centeredImage:getPixel(x, y)
+        outputImg:drawPixel(x, y, px)
+      end
+    end
+  elseif angle == math.pi / 2 then
+    for y = 0 , centeredImage.height-1, 1 do
+      for x = 0, centeredImage.width-1, 1 do
+        local px = centeredImage:getPixel(centeredImage.width - 1 - y, x)
+        outputImg:drawPixel(x, y, px)
+      end
+    end
+  elseif angle == math.pi * 3 / 2 then
+    for y = 0 , centeredImage.height-1, 1 do
+      for x = 0, centeredImage.width-1, 1 do
+        local px = centeredImage:getPixel(y, centeredImage.height - 1 - x)
+        outputImg:drawPixel(x, y, px)
+      end
+    end
+  elseif angle == math.pi then
+    for y = 0 , centeredImage.height-1, 1 do
+      for x = 0, centeredImage.width-1, 1 do
+        local px = centeredImage:getPixel(centeredImage.width - 1 - x, centeredImage.height - 1 - y)
+        outputImg:drawPixel(x, y, px)
+      end
+    end
+  else
+    for y = 0 , centeredImage.height-1, 1 do
+      for x = 0, centeredImage.width-1, 1 do
+        local oposite = pivot.x - x
+        local adyacent = pivot.y - y
+        local hypo = math.sqrt(oposite^2 + adyacent^2)
+        if hypo == 0.0 then
+          local px = centeredImage:getPixel(x, y)
+          outputImg:drawPixel(x, y, px)
+        else
+          local currentAngle = math.asin(oposite / hypo)
+          local resultAngle
+          local u
+          local v
+          if adyacent < 0 then
+            resultAngle = currentAngle + angle
+            v = - hypo * math.cos(resultAngle)
+          else
+            resultAngle = currentAngle - angle
+            v = hypo * math.cos(resultAngle)
+          end
+          u = hypo * math.sin(resultAngle)
+          if centeredImage.width / 2 - u >= 0 and
+            centeredImage.height / 2 - v >= 0 and
+            centeredImage.height / 2 - v < centeredImage.height and
+            centeredImage.width / 2 - u < centeredImage.width then
+            local px = centeredImage:getPixel(centeredImage.width / 2 - u, centeredImage.height / 2 - v)
+            if px ~= maskColor then
+              outputImg:drawPixel(x, y, px)
+            end
+          end
+        end
+      end
+    end
+  end
+  return outputImg
+end
+function updateCloneImage()
+
+	local skin_layer = bone_sprite.layers[selected_node.name]
+	if skin_layer == nil then
+	   return
+	   --skin_layer.stackIndex = 1
+	end
+	local skin_cel = skin_layer:cel(1)
+	if not skin_cel then
+		return
+	end
+
+	
+	--croppedImg:drawImage(src_img,Point(-bounds.x,-bounds.y))
+	--skin_cel.image:drawImage(croppedImg,0,0)
+	cloneImage = selected_node.image:clone()
+	
+end
 function createDiaglog()
 	if dlg then
 		dlg:close()
@@ -707,7 +834,7 @@ function createDiaglog()
 						selected_node = entry.node
 						dlg:modify { id = "offset_x", value = selected_node.offset_x }
 						dlg:modify { id = "offset_y", value = selected_node.offset_y }
-						
+						updateCloneImage()
 						dlg:repaint()
 
 						return
@@ -741,7 +868,18 @@ function createDiaglog()
             label = "rotator",
             min = 0,
             max = 360,
-            value = 0 }
+            value = 0 ,
+			onchange = function()
+			local value = dlg.data.rotator
+            local rounded_value = math.floor(value / 18 + 0.5) * 18
+    
+                 dlg:modify{id = "rotator", value = rounded_value}
+				 local angle = toAngle(rounded_value)
+				 rotateSelectLayerImage(angle)
+			end
+			
+			}
+	dlg:button{id="rotate", text="rotate", onclick=function()  end}
 	dlg:newrow()
 	dlg:button{id="CreateKey", text="CreateKey", onclick=function() dlg:close() end}
 	dlg:button{id="Save", text="Save", onclick=function() dlg:close() end}
